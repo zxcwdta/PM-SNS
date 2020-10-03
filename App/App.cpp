@@ -38,6 +38,8 @@
 #include <unistd.h>
 #include <pwd.h>
 #include <map>
+#include <unordered_map>
+#include <string>
 #define MAX_PATH FILENAME_MAX
 #include "sgx_urts.h"
 #include "LocalStorage.hpp"
@@ -1232,6 +1234,11 @@ void profile_serialisation(char *dst, User src)
 	memcpy(dst+index, src.hobby, sizeof(src.hobby));
 }
 
+typedef struct secret_wrapper {
+	size_t len;
+	char *cb;
+}cb_wrapper;
+
 int main(int argc, char *argv[])
 {
   //getParams(argc, argv);
@@ -1244,6 +1251,8 @@ int main(int argc, char *argv[])
           getchar();
           return -1; 
       }
+	
+	std::unordered_map<std::string, cb_wrapper> MT;
 	int current_user_id, socket_id;
 	ecall_libcxx_sys_init();
 	// socket_id = socket_init();
@@ -1251,7 +1260,7 @@ int main(int argc, char *argv[])
 	// receives user id from enclave.
 	printf("user id %d is registered in enclave.\n", current_user_id);	
 	// Assuming the Remote Attestation is done and we have received a profile securely.
-	User profile = { current_user_id, "First Name", "Last Name", 25, 1, "Melbourne", "Coding" };
+	User profile = { current_user_id, "First Name", "Last Name", 1222225, 1, "Melbourne", "Coding" };
     printf("Size of profile = %d, profile.id = %d, .fname = %d, .lname = %d, .age = %d, .gender = %d, .location = %d, .hobby = %d.\n",
 	sizeof(profile),sizeof(profile.uid), sizeof(profile.fname), sizeof(profile.lname), sizeof(profile.age), sizeof(profile.gender), sizeof(profile.location), sizeof(profile.hobby));
 	char *serialised_profile = (char*)malloc(sizeof(profile));
@@ -1264,7 +1273,7 @@ int main(int argc, char *argv[])
 	// encryption for profile
 	size_t enc_profile_size = (SGX_AESGCM_MAC_SIZE + SGX_AESGCM_IV_SIZE + sizeof(profile));
 	char *enc_profile = (char*)malloc(enc_profile_size);
-	ecall_libcxx_encrypt(serialised_profile, sizeof(profile), enc_profile, enc_profile_size, 0);
+	ecall_libcxx_encrypt(serialised_profile, sizeof(profile), enc_profile, enc_profile_size, current_user_id);
 	printf("Encrypted profile: ");
 	for (int i = 0; i < enc_profile_size; i++)
 		printf("%x ", (unsigned char)enc_profile[i]);
@@ -1275,17 +1284,57 @@ int main(int argc, char *argv[])
 	
 	// As each attribute contains two search token, STA and STB, where the size of each is 16 bytes (128 bits)
 	// using MD5, given the number of attributes in a profile, size of search tokens can be computed.
-	size_t search_token_size = 64 * 5;
+	size_t search_token_size = (64 * 4) + 1;
 	char *search_token = (char*)malloc(search_token_size);
-	ecall_libcxx_sys_search_token_computation(enc_profile, enc_profile_size, search_token, search_token_size, NULL, 0, 0);
+	size_t secret_token_size = ((SGX_AESGCM_MAC_SIZE + SGX_AESGCM_IV_SIZE + 4) * 4) + search_token_size; 
+	char *secret_token = (char*)malloc(secret_token_size);
+	printf("search_token size before ecall: %d, secret_size before ecall: %d\n", search_token_size, secret_token_size);
+	ecall_libcxx_sys_search_token_computation(enc_profile, enc_profile_size, search_token, search_token_size, secret_token, secret_token_size, current_user_id);
+	printf("finished token computation, token result: %s\n", search_token);
 	// decryption for profile
 	size_t dec_profile_size = sizeof(profile);
 	char *dec_profile = (char*)malloc(dec_profile_size);
-	ecall_libcxx_decrypt(enc_profile, enc_profile_size, dec_profile, dec_profile_size, 0);
+	ecall_libcxx_decrypt(enc_profile, enc_profile_size, dec_profile, dec_profile_size, current_user_id);
 	printf("Decrypted profile: ");
 	for (int i = 0; i < dec_profile_size; i++)
 		printf("%c ", (unsigned char)dec_profile[i]);
 	printf("\n");
+	printf("search_token after ecall: ");
+	for (int i = 0; i < search_token_size; i++)
+		printf("%c ", (unsigned char)search_token[i]);
+	printf("\n");
+	printf("secret_token after ecall: ");
+	for (int i = 0; i < secret_token_size; i++)
+		printf("%c ", (char)secret_token[i]);
+	printf("\n");
+	
+	int secret_token_offset = 0;
+	int cb_size = (SGX_AESGCM_MAC_SIZE + SGX_AESGCM_IV_SIZE + 4);
+	for (int i = 0; i < 4; i++)
+	{
+		
+		char ca_raw[65] = { 0 };
+		memcpy(ca_raw, secret_token+secret_token_offset, 64);
+		ca_raw[64] = '\0';
+		secret_token_offset += 64;
+		printf("ca for %d attribute: %s\n", i, ca_raw);
+		std::string ca_str = ca_raw;
+		cb_wrapper cb = {.len = cb_size};
+		cb.cb = (char*)malloc(cb.len);
+		memcpy(cb.cb, secret_token+secret_token_offset, cb.len);
+		secret_token_offset += cb_size;
+		MT.insert(std::pair<std::string, cb_wrapper>(ca_str, cb));
+		
+	}
+std::unordered_map<std::string, cb_wrapper>::iterator it;
+
+for ( it = MT.begin(); it != MT.end(); it++ )
+{
+    std::cout << it->first  // string (key)
+              << ':'
+              << it->second.cb   // string's value 
+              << std::endl ;
+}	
     /* Destroy the enclave */
     sgx_destroy_enclave(global_eid);
     printf("Info: Cxx11DemoEnclave successfully returned.\n");
