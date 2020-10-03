@@ -52,7 +52,11 @@
 #define KEY_SIZE 16
 #define BUFLEN 2048
 #define PROFILE_SIZE 140
+#define NUM_ELEMENTS_PROFILE 4
+#define PROFILE_OFFSET 68
 User* profile_deserialisation(char*);
+static int p_size[NUM_ELEMENTS_PROFILE] = { 4, 1, 32, 32 };
+enum PROFILE_ELEMENT{ PROFILE_AGE = 0, PROFILE_GENDER, PROFILE_LOCATION, PROFILE_HOBBY };
 typedef struct keywrapper {
 	sgx_aes_gcm_128bit_key_t key;
 }key_wrapper;
@@ -72,7 +76,7 @@ int counter;
 sgx_aes_gcm_128bit_key_t enclave_key = { 0x44, 0x54, 0x61, 0x5f, 0x49, 0x49, 0x44, 0x58, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38 };
 void ecall_sys_init()
 {
-	counter = 0;
+	counter = 123;
 }
 
 void ecall_sys_reg(int *uid)
@@ -110,10 +114,10 @@ void ecall_encrypt(char *decMessageIn, size_t len, char *encMessageOut, size_t l
 	sgx_aes_gcm_128bit_key_t key = { 0 };
 	memcpy(key, KT.find(userId)->second.key, KEY_SIZE);
 	#ifdef DEBUG_PRINT
-	printf("ecall_encrypt:: uid: %d, key: ", userId);
-	for (int i = 0; i < 16; i++)
-		printf("%x ", (unsigned char)key[i]);
-	printf("\n");
+//	printf("ecall_encrypt:: uid: %d, key: ", userId);
+//	for (int i = 0; i < 16; i++)
+//		printf("%x ", (unsigned char)key[i]);
+//	printf("\n");
 	#endif
 	sgx_rijndael128GCM_encrypt(
 		&key,
@@ -124,6 +128,30 @@ void ecall_encrypt(char *decMessageIn, size_t len, char *encMessageOut, size_t l
 		(sgx_aes_gcm_128bit_tag_t *) (p_dst));	
 	memcpy(encMessageOut,p_dst,lenOut);
 }
+void ecall_encrypt_with_key(char *decMessageIn, size_t len, char *encMessageOut, size_t lenOut, char *key, size_t key_len)
+
+{
+	uint8_t *origMessage = (uint8_t *) decMessageIn;
+	uint8_t p_dst[BUFLEN] = {0};
+
+	// Generate the IV (nonce)
+	sgx_read_rand(p_dst + SGX_AESGCM_MAC_SIZE, SGX_AESGCM_IV_SIZE);
+	#ifdef DEBUG_PRINT
+//	printf("ecall_encrypt:: uid: %d, key: ", userId);
+//	for (int i = 0; i < 16; i++)
+//		printf("%x ", (unsigned char)key[i]);
+//	printf("\n");
+	#endif
+	sgx_rijndael128GCM_encrypt(
+		(sgx_aes_gcm_128bit_key_t *)key,
+		origMessage, len, 
+		p_dst + SGX_AESGCM_MAC_SIZE + SGX_AESGCM_IV_SIZE,
+		p_dst + SGX_AESGCM_MAC_SIZE, SGX_AESGCM_IV_SIZE,
+		NULL, 0,
+		(sgx_aes_gcm_128bit_tag_t *) (p_dst));	
+	memcpy(encMessageOut,p_dst,lenOut);
+}
+
 void ecall_decrypt(char *encMessageIn, size_t len, char *decMessageOut, size_t lenOut, int userId)
 {
 	uint8_t *encMessage = (uint8_t *) encMessageIn;
@@ -131,13 +159,34 @@ void ecall_decrypt(char *encMessageIn, size_t len, char *decMessageOut, size_t l
 	sgx_aes_gcm_128bit_key_t key = { 0 };
 	memcpy(key, KT.find(userId)->second.key, KEY_SIZE);
 	#ifdef DEBUG_PRINT
-	printf("ecall_decrypt:: uid: %d, key: ", userId);
-	for (int i = 0; i < 16; i++)
-		printf("%x ", (unsigned char)key[i]);
-	printf("\n");
+//	printf("ecall_decrypt:: uid: %d, key: ", userId);
+//	for (int i = 0; i < 16; i++)
+//		printf("%x ", (unsigned char)key[i]);
+//	printf("\n");
 	#endif
 	sgx_rijndael128GCM_decrypt(
 		&key,
+		encMessage + SGX_AESGCM_MAC_SIZE + SGX_AESGCM_IV_SIZE,
+		lenOut,
+		p_dst,
+		encMessage + SGX_AESGCM_MAC_SIZE, SGX_AESGCM_IV_SIZE,
+		NULL, 0,
+		(sgx_aes_gcm_128bit_tag_t *) encMessage);
+	memcpy(decMessageOut, p_dst, lenOut);
+}
+
+void ecall_decrypt_with_key(char *encMessageIn, size_t len, char *decMessageOut, size_t lenOut, char *key, size_t key_len)
+{
+	uint8_t *encMessage = (uint8_t *) encMessageIn;
+	uint8_t p_dst[BUFLEN] = {0};
+	#ifdef DEBUG_PRINT
+//	printf("ecall_decrypt:: uid: %d, key: ", userId);
+//	for (int i = 0; i < 16; i++)
+//		printf("%x ", (unsigned char)key[i]);
+//	printf("\n");
+	#endif
+	sgx_rijndael128GCM_decrypt(
+		(sgx_aes_gcm_128bit_key_t *)key,
 		encMessage + SGX_AESGCM_MAC_SIZE + SGX_AESGCM_IV_SIZE,
 		lenOut,
 		p_dst,
@@ -211,6 +260,26 @@ unsigned char* sha256(char *string, char outputBuffer[65], unsigned char *rst_ra
 	memcpy(rst_raw, hash, 32);
 }
 
+void itoc(char *src, int n)
+{
+	char bytes[4] = { 0 };
+	bytes[0] = (n >> 24) & 0xFF;
+	bytes[1] = (n >> 16) & 0xFF;
+	bytes[2] = (n >> 8) & 0xFF;
+	bytes[3] = n & 0xFF;
+	memcpy(src, bytes, 4);
+}
+
+char *get_attribute(User *profile, int pos)
+{
+	switch (pos)
+	{
+		case (PROFILE_AGE): return (char*)&(profile->age); 
+		case (PROFILE_GENDER): return (char*)&(profile->gender);
+		case (PROFILE_LOCATION): return profile->location;
+		case (PROFILE_HOBBY): return profile->hobby;
+	}
+}
 void ecall_sys_search_token_computation(char *serialised_profile, size_t profile_len, char *token_out, size_t out_len, char *secret_out, size_t secret_len, int uid)
 {
 	// First is to decrypt the profile using the key assigned to uid.
@@ -229,17 +298,18 @@ void ecall_sys_search_token_computation(char *serialised_profile, size_t profile
 	profile->uid, profile->fname, profile->lname, profile->age, profile->gender, profile->location, profile->hobby);
 	#endif
 	
+	int token_out_offset = 0;
+	int secret_out_offset = 0;
+	for (int i = 0; i < NUM_ELEMENTS_PROFILE; i++)
+	{
 	char sha256_buffer[65] = { 0 };
-	int cnt = 0;
 	// Start to compute search token for an attribute
-	char *digest_buffer = (char*)malloc(16 + sizeof(profile->age));
+	char *digest_buffer = (char*)malloc(16 + p_size[i]);
 	memcpy(digest_buffer, enclave_key, 16);
-	memcpy(digest_buffer+16, &profile->age, sizeof(profile->age));
+	memcpy(digest_buffer+16, get_attribute(profile, i), p_size[i]);
 	unsigned char *stab_rst_raw = (unsigned char*)malloc(32);
 	sha256(digest_buffer, sha256_buffer, stab_rst_raw);	
 	
-	memcpy(token_out, sha256_buffer, 64);
-	cnt += 64;
 	// Trying to find the index for such search token computed above
 	search_token_pair pair = { {0}, {0} };
 	memcpy(pair.STA, sha256_buffer, 32);
@@ -247,7 +317,7 @@ void ecall_sys_search_token_computation(char *serialised_profile, size_t profile
 	memcpy(pair.STB, sha256_buffer+32, 32);
 	pair.STB[32] = {'\0'};
 	std::string sta_str( pair.STA );
-	printf("std:: struct: %s, string: %s\n", pair.STA, sta_str.c_str());
+//	printf("std:: struct: %s, string: %s\n", pair.STA, sta_str.c_str());
 	auto result = IM.find(sta_str);
 	if (result == IM.end())
 	{
@@ -262,10 +332,30 @@ void ecall_sys_search_token_computation(char *serialised_profile, size_t profile
 		unsigned char *c1_raw = (unsigned char*)malloc(32);
 		sha256(ca_plain_digest_buffer, c1, c1_raw);	
 		memcpy(secret.CA, c1, 64);
+
+		
+		size_t cb_len = (SGX_AESGCM_MAC_SIZE + SGX_AESGCM_IV_SIZE + 4);
+		secret.CB = (char*)malloc(cb_len);
+		char *uid_ptr = (char*)malloc(4);
+		itoc(uid_ptr, uid);
+		ecall_encrypt(uid_ptr, 4, secret.CB, cb_len, uid);
+		// to serialise the search token and secret token
+		
+
+		memcpy(token_out+token_out_offset, pair.STA, 32);
+		token_out_offset += 32;
+		memcpy(token_out+token_out_offset, pair.STB, 32);
+		token_out_offset += 32;
+		// CA, CB
+		memcpy(secret_out+secret_out_offset, secret.CA, 64);
+		secret_out_offset += 64;
+		memcpy(secret_out+secret_out_offset, secret.CB, cb_len);
+		secret_out_offset += cb_len;
 	}
 	else
 	{
 		printf("%s found, adding 1 on top.\n", sta_str.c_str());
 		result->second += 1;
+	}
 	}
 }

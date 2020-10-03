@@ -52,9 +52,11 @@ enclave {
 		public void ecall_sys_init(void);
 		public void ecall_sys_reg([user_check]int *uid);
 
-		public void ecall_sys_search_token_computation([in, size=profile_len]char *serialised_profile, size_t profile_len, [out, size=out_len]char *token_out, size_t out_len, [in, size=secret_len]char *secret_out, size_t secret_len, int uid);
+		public void ecall_sys_search_token_computation([in, size=profile_len]char *serialised_profile, size_t profile_len, [out, size=out_len]char *token_out, size_t out_len, [out, size=secret_len]char *secret_out, size_t secret_len, int uid);
 		public void ecall_encrypt([in, size=len]char *decMessageIn, size_t len, [out, size=lenOut]char *encMessageOut, size_t lenOut, int userId);
 		public void ecall_decrypt([in, size=len]char *encMessageIn, size_t len, [out, size=lenOut]char *decMessageOut, size_t lenOut, int userId);
+		public void ecall_encrypt_with_key([in, size=len]char *decMessageIn, size_t len, [out, size=lenOut]char *encMessageOut, size_t lenOut, [in, size=key_len]char *key, size_t key_len);
+		public void ecall_decrypt_with_key([in, size=len]char *encMessageIn, size_t len, [out, size=lenOut]char *decMessageOut, size_t lenOut, [in, size=key_len]char *key, size_t key_len);
     };
 	untrusted {
 	};
