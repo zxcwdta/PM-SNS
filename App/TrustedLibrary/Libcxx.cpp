@@ -74,11 +74,29 @@ void ecall_libcxx_encrypt(char *decMessageIn, size_t len, char *encMessageOut, s
 		abort();
 }
 
+void ecall_libcxx_encrypt_with_key(char *decMessageIn, size_t len, char *encMessageOut, size_t lenOut, char *key, size_t key_len)
+{
+	sgx_status_t ret = SGX_ERROR_UNEXPECTED;
+	
+	ret = ecall_encrypt_with_key(global_eid, decMessageIn, len, encMessageOut, lenOut, key, key_len);	
+	if (ret != SGX_SUCCESS)
+		abort();
+}
+
 void ecall_libcxx_decrypt(char *encMessageIn, size_t len, char *decMessageOut, size_t lenOut, int uid)
 {
 	sgx_status_t ret = SGX_ERROR_UNEXPECTED;
 	
 	ret = ecall_decrypt(global_eid, encMessageIn, len, decMessageOut, lenOut, uid);	
+	if (ret != SGX_SUCCESS)
+		abort();
+}
+
+void ecall_libcxx_decrypt_with_key(char *encMessageIn, size_t len, char *decMessageOut, size_t lenOut, char *key, size_t key_len)
+{
+	sgx_status_t ret = SGX_ERROR_UNEXPECTED;
+	
+	ret = ecall_decrypt_with_key(global_eid, encMessageIn, len, decMessageOut, lenOut, key, key_len);	
 	if (ret != SGX_SUCCESS)
 		abort();
 }

@@ -76,7 +76,7 @@ int counter;
 sgx_aes_gcm_128bit_key_t enclave_key = { 0x44, 0x54, 0x61, 0x5f, 0x49, 0x49, 0x44, 0x58, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38 };
 void ecall_sys_init()
 {
-	counter = 123;
+	counter = 1234;
 }
 
 void ecall_sys_reg(int *uid)
@@ -325,27 +325,28 @@ void ecall_sys_search_token_computation(char *serialised_profile, size_t profile
 		int cnt = 0;
 		IM.insert(std::pair<std::string, int>(sta_str, cnt));
 		secret_pair secret = {{0}};	
-		char *ca_plain_digest_buffer = (char*)malloc(20);
-		memcpy(ca_plain_digest_buffer, stab_rst_raw, 16);
-		memcpy(ca_plain_digest_buffer+16, &cnt, 4);
+		char *ca_plain_digest_buffer = (char*)malloc(36);
+		memcpy(ca_plain_digest_buffer, pair.STA, 32);
+		memcpy(ca_plain_digest_buffer+32, &cnt, 4);
 		char c1[65] = { 0 };
 		unsigned char *c1_raw = (unsigned char*)malloc(32);
 		sha256(ca_plain_digest_buffer, c1, c1_raw);	
 		memcpy(secret.CA, c1, 64);
-
+		
+		printf("STA: %s\nSTB: %s\n", pair.STA, pair.STB);
 		
 		size_t cb_len = (SGX_AESGCM_MAC_SIZE + SGX_AESGCM_IV_SIZE + 4);
 		secret.CB = (char*)malloc(cb_len);
 		char *uid_ptr = (char*)malloc(4);
 		itoc(uid_ptr, uid);
-		ecall_encrypt(uid_ptr, 4, secret.CB, cb_len, uid);
+		ecall_encrypt_with_key(uid_ptr, 4, secret.CB, cb_len, (char*)stab_rst_raw+16, 16);
 		// to serialise the search token and secret token
 		
 
 		memcpy(token_out+token_out_offset, pair.STA, 32);
 		token_out_offset += 32;
-		memcpy(token_out+token_out_offset, pair.STB, 32);
-		token_out_offset += 32;
+		memcpy(token_out+token_out_offset, stab_rst_raw+16, 16);
+		token_out_offset += 16;
 		// CA, CB
 		memcpy(secret_out+secret_out_offset, secret.CA, 64);
 		secret_out_offset += 64;

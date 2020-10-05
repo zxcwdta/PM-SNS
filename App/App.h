@@ -74,6 +74,8 @@ void ecall_libcxx_sys_reg(int*);
 void ecall_libcxx_sys_search_token_computation(char *serialised_profile, size_t profile_len, char *token_out, size_t out_len, char *secret_out, size_t secret_len, int uid);
 void ecall_libcxx_encrypt(char *decMessageIn, size_t len, char *encMessageOut, size_t lenOut, int userId);
 void ecall_libcxx_decrypt(char *encMessageIn, size_t len, char *decMessageOut, size_t lenOut, int uid);
+void ecall_libcxx_decrypt_with_key(char *encMessageIn, size_t len, char *decMessageOut, size_t lenOut, char *key, size_t key_len);
+void ecall_libcxx_encrypt_with_key(char *decMessageIn, size_t len, char *encMessageOut, size_t lenOut, char *key, size_t key_len);
 #if defined(__cplusplus)
 }
 #endif

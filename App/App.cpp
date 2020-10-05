@@ -47,7 +47,7 @@
 #include "Enclave_u.h"
 #include <sys/socket.h> 
 #include <netinet/in.h> 
-
+#include <openssl/sha.h>
 #define MAX_PATH FILENAME_MAX
 #define CIRCUIT_ORAM
 #define NUMBER_OF_WARMUP_REQUESTS 0
@@ -1239,6 +1239,50 @@ typedef struct secret_wrapper {
 	char *cb;
 }cb_wrapper;
 
+char itob(uint8_t val)
+{
+	switch(val)
+	{
+		case(0): return '0';
+		case(1): return '1';
+		case(2): return '2';
+		case(3): return '3';
+		case(4): return '4';
+		case(5): return '5';
+		case(6): return '6';
+		case(7): return '7';
+		case(8): return '8';
+		case(9): return '9';
+		case(10): return 'A';
+		case(11): return 'B';
+		case(12): return 'C';
+		case(13): return 'D';
+		case(14): return 'E';
+		case(15): return 'F';
+	}
+}
+
+unsigned char* sha256(char *string, char outputBuffer[65], unsigned char *rst_raw)
+{
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256_CTX sha256;
+    SHA256_Init(&sha256);
+    SHA256_Update(&sha256, string, strlen(string));
+    SHA256_Final(hash, &sha256);
+	for (int i = 0; i < SHA256_DIGEST_LENGTH ; i++)
+	{
+		uint8_t h, l;
+		h = hash[i] >> 4; 
+		l = hash[i] & 0x0F; 
+		outputBuffer[i * 2] = itob(h);
+		outputBuffer[i * 2 + 1] = itob(l);
+	}
+	outputBuffer[64] = {'\0'};
+	#ifdef DEBUG_PRINT
+	printf("ecall_sha256:: %s -> %s\n", string, outputBuffer);
+	#endif
+	memcpy(rst_raw, hash, 32);
+}
 int main(int argc, char *argv[])
 {
   //getParams(argc, argv);
@@ -1326,15 +1370,39 @@ int main(int argc, char *argv[])
 		MT.insert(std::pair<std::string, cb_wrapper>(ca_str, cb));
 		
 	}
-std::unordered_map<std::string, cb_wrapper>::iterator it;
 
-for ( it = MT.begin(); it != MT.end(); it++ )
+// Assuming we have got the search token STA, STB.
+// It iterates through every combination of STA + index to find CA
+// and decrypts it using STB as key.
+
+for (int i = 0; i < search_token_size; i += 48)
 {
-    std::cout << it->first  // string (key)
-              << ':'
-              << it->second.cb   // string's value 
-              << std::endl ;
-}	
+	char *STA = (char*)malloc(32);
+	char *STB = (char*)malloc(16);	
+	char *sha256_digest_buffer = (char*)malloc(36);
+	int counter = 0;
+	char c1_out_str[65] = { 0 };
+	unsigned char *c1_out_raw = (unsigned char*)malloc(32);
+	memcpy(STA, search_token+i, 32);
+	memcpy(STB, search_token+i+32, 16);
+	memcpy(sha256_digest_buffer, STA, 32);
+	memcpy(sha256_digest_buffer+32, &counter, 4);	
+	sha256(sha256_digest_buffer, c1_out_str, c1_out_raw);	
+	c1_out_str[64] = '\0';
+	printf("CA: %s\n", c1_out_str);
+	std::unordered_map<std::string,cb_wrapper>::iterator it;
+	it = MT.find(std::string(c1_out_str));
+	if (it == MT.end())
+		continue;
+	
+	size_t dec_message_len = 4;
+	char *dec_message = (char*)malloc(dec_message_len);
+	ecall_libcxx_decrypt_with_key(it->second.cb, cb_size, dec_message, dec_message_len, STB, 16);
+	printf("CA: %s, CB: ", it->first.c_str());
+	for (int i = 0; i < 4; i++)
+		printf("%02x ", (unsigned char)dec_message[i]);
+	printf("\n");
+}
     /* Destroy the enclave */
     sgx_destroy_enclave(global_eid);
     printf("Info: Cxx11DemoEnclave successfully returned.\n");
