@@ -32,7 +32,7 @@
 
 shopt -s expand_aliases
 
-SGX_LIBRARY_PATH=/home/parallels/Documents/linux-sgx/linux/installer/bin/sgxsdk/lib64
+SGX_LIBRARY_PATH=/home/junweiluo/Documents/linux-sgx/linux/installer/bin/sgxsdk/lib64
 GDB_SGX_PLUGIN_PATH=$SGX_LIBRARY_PATH/gdb-sgx-plugin
 
 if [ -f /usr/local/bin/gdb ]

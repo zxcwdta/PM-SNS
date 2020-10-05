@@ -357,6 +357,35 @@ void ecall_sys_search_token_computation(char *serialised_profile, size_t profile
 	{
 		printf("%s found, adding 1 on top.\n", sta_str.c_str());
 		result->second += 1;
+		int cnt = result->second;
+		secret_pair secret = {{0}};	
+		char *ca_plain_digest_buffer = (char*)malloc(36);
+		memcpy(ca_plain_digest_buffer, pair.STA, 32);
+		memcpy(ca_plain_digest_buffer+32, &cnt, 4);
+		char c1[65] = { 0 };
+		unsigned char *c1_raw = (unsigned char*)malloc(32);
+		sha256(ca_plain_digest_buffer, c1, c1_raw);	
+		memcpy(secret.CA, c1, 64);
+		
+		printf("STA: %s\nSTB: %s\n", pair.STA, pair.STB);
+		
+		size_t cb_len = (SGX_AESGCM_MAC_SIZE + SGX_AESGCM_IV_SIZE + 4);
+		secret.CB = (char*)malloc(cb_len);
+		char *uid_ptr = (char*)malloc(4);
+		itoc(uid_ptr, uid);
+		ecall_encrypt_with_key(uid_ptr, 4, secret.CB, cb_len, (char*)stab_rst_raw+16, 16);
+		// to serialise the search token and secret token
+		
+
+		memcpy(token_out+token_out_offset, pair.STA, 32);
+		token_out_offset += 32;
+		memcpy(token_out+token_out_offset, stab_rst_raw+16, 16);
+		token_out_offset += 16;
+		// CA, CB
+		memcpy(secret_out+secret_out_offset, secret.CA, 64);
+		secret_out_offset += 64;
+		memcpy(secret_out+secret_out_offset, secret.CB, cb_len);
+		secret_out_offset += cb_len;
 	}
 	}
 }
